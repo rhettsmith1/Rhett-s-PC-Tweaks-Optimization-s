@@ -1,0 +1,1076 @@
+@echo off
+title Rhett's PC Tweaks ^& Optimization
+color 0F
+mode con cols=80 lines=44
+setlocal
+
+:: ---------- Self-elevate to Administrator ----------
+net session >nul 2>&1
+if %errorlevel% neq 0 (
+    powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+    exit /b
+)
+
+:: ---------- Color setup (ANSI) ----------
+for /f %%E in ('echo prompt $E^| cmd') do set "ESC=%%E"
+set "RS=%ESC%[0m"
+set "RD=%ESC%[91m"
+set "GR=%ESC%[92m"
+set "YL=%ESC%[93m"
+set "BL=%ESC%[94m"
+set "MG=%ESC%[95m"
+set "CY=%ESC%[96m"
+set "WH=%ESC%[97m"
+set "GY=%ESC%[90m"
+set "BD=%ESC%[1m"
+
+:main
+cls
+echo.
+call :rainbow
+echo.
+echo     %BD%%MG%Rhett's %CY%PC Tweaks %YL%^& %GR%Optimization%RS%
+echo     %GY%Pick an option with a single key press. Apply, undo or cancel any tweak.%RS%
+echo.
+echo   %ESC%[30;106m 1 %RS%  %CY%Network      %RS%%GY%DNS, latency, throttling%RS%
+echo   %ESC%[97;101m 2 %RS%  %RD%CPU          %RS%%GY%Scheduling, core parking, boost%RS%
+echo   %ESC%[30;102m 3 %RS%  %GR%GPU          %RS%%GY%HAGS, fullscreen, driver timeout%RS%
+echo   %ESC%[97;105m 4 %RS%  %MG%Memory       %RS%%GY%RAM, paging, compression%RS%
+echo   %ESC%[30;103m 5 %RS%  %YL%Performance  %RS%%GY%Ultimate plan and Rhett's Performance%RS%
+echo   %ESC%[97;104m 6 %RS%  %BL%Gaming       %RS%%GY%Game Mode, DVR, mouse, priority%RS%
+echo   %ESC%[30;107m 7 %RS%  %WH%Privacy      %RS%%GY%Telemetry, ads, suggestions%RS%
+echo   %ESC%[30;43m 8 %RS%  %YL%Cleanup      %RS%%GY%Temp files, caches, SFC and DISM%RS%
+echo.
+echo   %ESC%[30;102m R %RS%  %GR%Create a System Restore Point %GY%(do this first)%RS%
+echo   %ESC%[97;100m 0 %RS%  %GY%Exit%RS%
+echo.
+call :prompt
+choice /c 12345678R0 /n >nul
+set sel=%errorlevel%
+if %sel%==1 goto menu_net
+if %sel%==2 goto menu_cpu
+if %sel%==3 goto menu_gpu
+if %sel%==4 goto menu_mem
+if %sel%==5 goto menu_perf
+if %sel%==6 goto menu_game
+if %sel%==7 goto menu_priv
+if %sel%==8 goto menu_clean
+if %sel%==9 call :run restorepoint "Create System Restore Point" "Creates a restore point so you can roll back. Windows allows one per 24 hours by default."
+if %sel%==10 goto quit
+goto main
+
+:quit
+echo %RS%
+cls
+exit /b
+
+:: =====================================================
+::  NETWORK
+:: =====================================================
+:menu_net
+set "K=%ESC%[30;106m"
+call :hdr "NETWORK" "Faster lookups, lower latency, less throttling"
+echo   %K% A %RS%  %WH%Flush DNS cache%RS%
+echo   %K% B %RS%  %WH%Release and renew IP%RS%
+echo   %K% C %RS%  %WH%Reset Winsock %GY%(reboot needed)%RS%
+echo   %K% D %RS%  %WH%Reset TCP/IP stack %GY%(reboot needed)%RS%
+echo   %K% E %RS%  %WH%Use Cloudflare DNS 1.1.1.1%RS%
+echo   %K% F %RS%  %WH%Use Google DNS 8.8.8.8%RS%
+echo   %K% G %RS%  %WH%TCP auto-tuning normal + RSS on%RS%
+echo   %K% H %RS%  %WH%Disable network throttling%RS%
+echo   %K% I %RS%  %WH%Disable Nagle algorithm %GY%(lower latency)%RS%
+echo   %K% J %RS%  %WH%Disable network adapter power saving%RS%
+echo   %K% K %RS%  %WH%Remove QoS bandwidth reservation%RS%
+echo   %K% L %RS%  %WH%Disable Delivery Optimization %GY%(P2P updates)%RS%
+echo.
+echo   %ESC%[97;100m 0 %RS%  %GY%Back to main menu%RS%
+echo.
+call :prompt
+choice /c ABCDEFGHIJKL0 /n >nul
+set sel=%errorlevel%
+if %sel%==13 goto main
+if %sel%==1  call :run flushdns "Flush DNS cache" "Clears the local DNS resolver cache. Fixes stale or broken lookups."
+if %sel%==2  call :run renewip "Release and renew IP" "Drops your DHCP lease and requests a new one. Connection blips briefly."
+if %sel%==3  call :run winsock "Reset Winsock" "Resets the Winsock catalog. Fixes odd connection problems. Needs a reboot."
+if %sel%==4  call :run tcpreset "Reset TCP/IP stack" "Rewrites TCP/IP settings to defaults. Needs a reboot."
+if %sel%==5  call :run dnscf "Cloudflare DNS" "Sets DNS on all active adapters to 1.1.1.1 and 1.0.0.1. Usually faster lookups."
+if %sel%==6  call :run dnsgoogle "Google DNS" "Sets DNS on all active adapters to 8.8.8.8 and 8.8.4.4."
+if %sel%==7  call :run tcptune "TCP auto-tuning and RSS" "Sets recommended receive window auto-tuning and enables receive-side scaling."
+if %sel%==8  call :run throttle "Disable network throttling" "Removes the multimedia network throttle. Can help gaming and streaming."
+if %sel%==9  call :run nagle "Disable Nagle algorithm" "Sends small packets immediately on all interfaces. Lowers latency in online games."
+if %sel%==10 call :run adapterpower "Adapter power saving" "Stops Windows turning off your network adapters to save power."
+if %sel%==11 call :run qos "Remove QoS reservation" "Sets reservable bandwidth limit to 0 percent."
+if %sel%==12 call :run dop2p "Delivery Optimization" "Stops Windows sharing update downloads with other PCs over your connection."
+goto menu_net
+
+:: =====================================================
+::  CPU
+:: =====================================================
+:menu_cpu
+set "K=%ESC%[97;101m"
+call :hdr "CPU" "Scheduling, core parking and boost behavior"
+echo   %K% A %RS%  %WH%Foreground app CPU priority boost%RS%
+echo   %K% B %RS%  %WH%Disable CPU core parking%RS%
+echo   %K% C %RS%  %WH%Minimum processor state 100 percent%RS%
+echo   %K% D %RS%  %WH%Disable Windows power throttling%RS%
+echo   %K% E %RS%  %WH%Better multimedia and system responsiveness%RS%
+echo   %K% F %RS%  %WH%Show CPU info%RS%
+echo.
+echo   %ESC%[97;100m 0 %RS%  %GY%Back to main menu%RS%
+echo.
+call :prompt
+choice /c ABCDEF0 /n >nul
+set sel=%errorlevel%
+if %sel%==7 goto main
+if %sel%==1 call :run prioritysep "CPU priority boost" "Gives the app you are using more CPU time slices. Undo restores the Windows default."
+if %sel%==2 call :run parking "Disable core parking" "Keeps all CPU cores awake on the active plan (plugged in). Undo sets 10 percent."
+if %sel%==3 call :run minproc "Minimum processor state 100 percent" "CPU stays at full speed on the active plan (plugged in). Runs hotter and uses more power."
+if %sel%==4 call :run powerthrottle "Disable power throttling" "Stops Windows slowing down background apps to save power."
+if %sel%==5 call :run sysresp "System responsiveness" "Reserves 0 percent of CPU for background multimedia tasks instead of 20 percent."
+if %sel%==6 call :run cpuinfo "CPU info" "Shows your processor name, cores, threads and max clock speed."
+goto menu_cpu
+
+:: =====================================================
+::  GPU
+:: =====================================================
+:menu_gpu
+set "K=%ESC%[30;102m"
+call :hdr "GPU" "Graphics scheduling, fullscreen and driver stability"
+echo   %K% A %RS%  %WH%Hardware-accelerated GPU scheduling %GY%(reboot)%RS%
+echo   %K% B %RS%  %WH%Disable Multiplane Overlay %GY%(fixes some stutter)%RS%
+echo   %K% C %RS%  %WH%Disable fullscreen optimizations globally%RS%
+echo   %K% D %RS%  %WH%Optimizations for windowed games + VRR%RS%
+echo   %K% E %RS%  %WH%Longer GPU driver timeout %GY%(fewer TDR crashes)%RS%
+echo   %K% F %RS%  %WH%Clear DirectX shader cache%RS%
+echo.
+echo   %ESC%[97;100m 0 %RS%  %GY%Back to main menu%RS%
+echo.
+call :prompt
+choice /c ABCDEF0 /n >nul
+set sel=%errorlevel%
+if %sel%==7 goto main
+if %sel%==1 call :run hags "GPU scheduling (HAGS)" "Needs a supported GPU and driver. Reboot required."
+if %sel%==2 call :run mpo "Disable Multiplane Overlay" "Fixes flicker or stutter on some NVIDIA and AMD setups. Reboot required."
+if %sel%==3 call :run fso "Disable fullscreen optimizations" "Games run in true exclusive fullscreen. Can lower input lag in some games."
+if %sel%==4 call :run vrr "Windowed game optimizations and VRR" "Enables flip model upgrades and variable refresh rate for windowed games."
+if %sel%==5 call :run tdr "GPU timeout (TDR delay)" "Raises the driver timeout from 2 to 8 seconds so heavy loads do not crash the driver."
+if %sel%==6 call :run shadercache "Clear DirectX shader cache" "Deletes the shader cache. Games rebuild it, so first launch may stutter once."
+goto menu_gpu
+
+:: =====================================================
+::  MEMORY
+:: =====================================================
+:menu_mem
+set "K=%ESC%[97;105m"
+call :hdr "MEMORY" "RAM, paging and compression"
+echo   %K% A %RS%  %WH%Disable SysMain / Superfetch %GY%(SSD only)%RS%
+echo   %K% B %RS%  %WH%Keep kernel and drivers in RAM %GY%(16 GB or more)%RS%
+echo   %K% C %RS%  %WH%Disable memory compression %GY%(16 GB or more)%RS%
+echo   %K% D %RS%  %WH%Disable page combining%RS%
+echo   %K% E %RS%  %WH%Increase NTFS memory usage%RS%
+echo   %K% F %RS%  %WH%Show RAM info%RS%
+echo.
+echo   %ESC%[97;100m 0 %RS%  %GY%Back to main menu%RS%
+echo.
+call :prompt
+choice /c ABCDEF0 /n >nul
+set sel=%errorlevel%
+if %sel%==7 goto main
+if %sel%==1 call :run sysmain "Disable SysMain" "Good on SSD systems. Not recommended if Windows is on a hard drive."
+if %sel%==2 call :run pagingexec "Disable paging executive" "Keeps core Windows code in RAM instead of the page file. Use with 16 GB RAM or more."
+if %sel%==3 call :run memcomp "Disable memory compression" "Saves CPU time when you have plenty of RAM. Reboot required. Use with 16 GB or more."
+if %sel%==4 call :run pagecomb "Disable page combining" "Stops Windows scanning RAM for duplicate pages. Reboot required."
+if %sel%==5 call :run ntfsmem "NTFS memory usage" "Lets NTFS use more paged pool memory for file caching."
+if %sel%==6 call :run raminfo "RAM info" "Shows your total and free RAM."
+goto menu_mem
+
+:: =====================================================
+::  PERFORMANCE
+:: =====================================================
+:menu_perf
+set "K=%ESC%[30;103m"
+call :hdr "PERFORMANCE" "Power plans and system-wide speed tweaks"
+echo   %K% A %RS%  %YL%Ultimate Performance power plan%RS%
+echo   %K% B %RS%  %BD%%MG%Rhett's Performance%RS%  %GY%(all-in-one custom mode)%RS%
+echo   %K% C %RS%  %WH%High Performance power plan%RS%
+echo   %K% D %RS%  %WH%Disable hibernation %GY%(also disables Fast Startup)%RS%
+echo   %K% E %RS%  %WH%Disable transparency effects%RS%
+echo   %K% F %RS%  %WH%Disable window animations%RS%
+echo   %K% G %RS%  %WH%Faster menus%RS%
+echo   %K% H %RS%  %WH%Remove startup app delay%RS%
+echo   %K% I %RS%  %WH%Disable background apps%RS%
+echo   %K% J %RS%  %WH%Faster shutdown%RS%
+echo   %K% K %RS%  %WH%TRIM all SSDs%RS%
+echo   %K% L %RS%  %WH%Disable NTFS last access updates%RS%
+echo   %K% M %RS%  %WH%Faster app close on shutdown%RS%
+echo.
+echo   %ESC%[97;100m 0 %RS%  %GY%Back to main menu%RS%
+echo.
+call :prompt
+choice /c ABCDEFGHIJKLM0 /n >nul
+set sel=%errorlevel%
+if %sel%==14 goto main
+if %sel%==1  call :run ultimate "Ultimate Performance plan" "Creates and activates the hidden Ultimate Performance plan. Undo goes back to Balanced."
+if %sel%==2  call :run rhett "Rhett's Performance" "All-in-one: custom power plan plus CPU, GPU, memory, network and system tweaks." "U reverts everything it changed. Restart afterwards for the full effect."
+if %sel%==3  call :run hiperf "High Performance plan" "Switches to the built-in High Performance power plan. Undo goes back to Balanced."
+if %sel%==4  call :run hibernate "Disable hibernation" "Turns off hibernate and deletes hiberfil.sys (frees several GB)."
+if %sel%==5  call :run transparency "Disable transparency" "Turns off Windows transparency. Lighter on the GPU."
+if %sel%==6  call :run animations "Disable window animations" "Turns off minimize and maximize animations. Sign out to apply."
+if %sel%==7  call :run menus "Faster menus" "Sets menu show delay to 50 ms (default is 400)."
+if %sel%==8  call :run startupdelay "Remove startup delay" "Startup apps launch right away instead of after a delay."
+if %sel%==9  call :run bgapps "Disable background apps" "Stops Store apps running in the background."
+if %sel%==10 call :run shutdown "Faster shutdown" "Lowers the service kill timeout to 2 seconds."
+if %sel%==11 call :run trim "TRIM all SSDs" "Runs a TRIM on every fixed drive. One-time action."
+if %sel%==12 call :run lastaccess "Disable last access updates" "Stops NTFS writing a timestamp every time a file is read."
+if %sel%==13 call :run appclose "Faster app close" "Closes hung apps quickly when you shut down or sign out."
+goto menu_perf
+
+:: =====================================================
+::  GAMING
+:: =====================================================
+:menu_game
+set "K=%ESC%[97;104m"
+call :hdr "GAMING" "Game Mode, recording, mouse and priority"
+echo   %K% A %RS%  %WH%Enable Game Mode%RS%
+echo   %K% B %RS%  %WH%Disable Game DVR / background recording%RS%
+echo   %K% C %RS%  %WH%Disable mouse acceleration%RS%
+echo   %K% D %RS%  %WH%Raise game task priority%RS%
+echo.
+echo   %ESC%[97;100m 0 %RS%  %GY%Back to main menu%RS%
+echo.
+call :prompt
+choice /c ABCD0 /n >nul
+set sel=%errorlevel%
+if %sel%==5 goto main
+if %sel%==1 call :run gamemode "Enable Game Mode" "Turns on Windows Game Mode."
+if %sel%==2 call :run gamedvr "Disable Game DVR" "Stops Xbox Game Bar background capture. Can improve FPS."
+if %sel%==3 call :run mouseaccel "Disable mouse acceleration" "Turns off Enhance pointer precision for 1 to 1 movement. Sign out to apply."
+if %sel%==4 call :run gametask "Raise game task priority" "Gives games higher GPU and CPU scheduling priority in the multimedia profile."
+goto menu_game
+
+:: =====================================================
+::  PRIVACY
+:: =====================================================
+:menu_priv
+set "K=%ESC%[30;107m"
+call :hdr "PRIVACY" "Less tracking, fewer ads"
+echo   %K% A %RS%  %WH%Disable advertising ID%RS%
+echo   %K% B %RS%  %WH%Minimize telemetry%RS%
+echo   %K% C %RS%  %WH%Disable DiagTrack service%RS%
+echo   %K% D %RS%  %WH%Disable activity history%RS%
+echo   %K% E %RS%  %WH%Disable Start menu suggestions and tips%RS%
+echo   %K% F %RS%  %WH%Disable web results in Start search%RS%
+echo.
+echo   %ESC%[97;100m 0 %RS%  %GY%Back to main menu%RS%
+echo.
+call :prompt
+choice /c ABCDEF0 /n >nul
+set sel=%errorlevel%
+if %sel%==7 goto main
+if %sel%==1 call :run adid "Disable advertising ID" "Stops apps using your advertising ID for personalized ads."
+if %sel%==2 call :run telemetry "Minimize telemetry" "Sets the telemetry policy to the lowest level your Windows edition allows."
+if %sel%==3 call :run diagtrack "Disable DiagTrack" "Stops and disables the Connected User Experiences and Telemetry service."
+if %sel%==4 call :run activity "Disable activity history" "Stops Windows collecting and publishing your activity history."
+if %sel%==5 call :run suggestions "Disable suggestions and tips" "Turns off suggested apps, tips and promoted content."
+if %sel%==6 call :run websearch "Disable web search in Start" "Start search only searches your PC, not Bing."
+goto menu_priv
+
+:: =====================================================
+::  CLEANUP
+:: =====================================================
+:menu_clean
+set "K=%ESC%[30;43m"
+call :hdr "CLEANUP" "Free space and repair Windows"
+echo   %K% A %RS%  %WH%Delete user temp files%RS%
+echo   %K% B %RS%  %WH%Delete Windows temp files%RS%
+echo   %K% C %RS%  %WH%Empty Recycle Bin%RS%
+echo   %K% D %RS%  %WH%Clear Windows Update download cache%RS%
+echo   %K% E %RS%  %WH%Clear thumbnail cache%RS%
+echo   %K% F %RS%  %WH%Run SFC %GY%(system file check)%RS%
+echo   %K% G %RS%  %WH%Run DISM RestoreHealth%RS%
+echo.
+echo   %ESC%[97;100m 0 %RS%  %GY%Back to main menu%RS%
+echo.
+call :prompt
+choice /c ABCDEFG0 /n >nul
+set sel=%errorlevel%
+if %sel%==8 goto main
+if %sel%==1 call :run usertemp "Delete user temp files" "Clears your user TEMP folder. Files in use are skipped."
+if %sel%==2 call :run wintemp "Delete Windows temp files" "Clears the Windows Temp folder. Files in use are skipped."
+if %sel%==3 call :run recycle "Empty Recycle Bin" "Permanently deletes everything in the Recycle Bin."
+if %sel%==4 call :run wucache "Clear update cache" "Deletes downloaded update files. Windows re-downloads what it needs."
+if %sel%==5 call :run thumbs "Clear thumbnail cache" "Deletes cached Explorer thumbnails. They rebuild as needed."
+if %sel%==6 call :run sfc "Run SFC" "Opens a window that scans and repairs protected system files. Takes a while."
+if %sel%==7 call :run dism "Run DISM RestoreHealth" "Opens a window that repairs the component store. Needs internet. Takes a while."
+goto menu_clean
+
+:: =====================================================
+::  UI HELPERS
+:: =====================================================
+:rainbow
+echo   %ESC%[101m             %ESC%[103m             %ESC%[102m             %ESC%[106m             %ESC%[104m             %ESC%[105m             %RS%
+exit /b
+
+:hdr
+cls
+echo.
+call :rainbow
+echo.
+echo   %K%   %~1   %RS%  %BD%%MG%Rhett's %CY%PC Tweaks %YL%^& %GR%Optimization%RS%
+echo   %GY%%~2%RS%
+echo.
+exit /b
+
+:prompt
+<nul set /p "=  %YL%--> %WH%Press a key to choose: %RS%"
+exit /b
+
+:step
+echo   %MG% +%RS% %WH%%~1%RS%
+exit /b
+
+:: =====================================================
+::  CONFIRM + DISPATCH   (Y = apply, U = undo, N = cancel)
+:: =====================================================
+:run
+cls
+echo.
+call :rainbow
+echo.
+echo   %ESC%[30;103m  %~2  %RS%
+echo.
+echo   %WH%%~3%RS%
+if not "%~4"=="" echo   %GY%%~4%RS%
+echo.
+echo   %ESC%[30;102m Y %RS%  %GR%Yes, apply it%RS%
+echo   %ESC%[30;103m U %RS%  %YL%Undo / revert it%RS%
+echo   %ESC%[97;101m N %RS%  %RD%No, cancel%RS%
+echo.
+<nul set /p "=  %YL%--> %WH%Apply this tweak? Press Y, U or N: %RS%"
+choice /c YUN /n >nul
+echo.
+if errorlevel 3 exit /b
+if errorlevel 2 call :undo_%~1 & goto run_done
+call :do_%~1
+:run_done
+echo.
+echo   %GR%Finished.%RS% %GY%Press any key to continue...%RS%
+pause >nul
+exit /b
+
+:: =====================================================
+::  NETWORK ACTIONS
+:: =====================================================
+:do_flushdns
+ipconfig /flushdns
+exit /b
+:undo_flushdns
+echo No undo available for this tweak.
+exit /b
+
+:do_renewip
+ipconfig /release >nul
+ipconfig /renew
+exit /b
+:undo_renewip
+echo No undo available for this tweak.
+exit /b
+
+:do_winsock
+netsh winsock reset
+exit /b
+:undo_winsock
+echo No undo available for this tweak.
+exit /b
+
+:do_tcpreset
+netsh int ip reset
+exit /b
+:undo_tcpreset
+echo No undo available for this tweak.
+exit /b
+
+:do_dnscf
+powershell -NoProfile -Command "Get-NetAdapter | Where-Object Status -eq 'Up' | ForEach-Object { Set-DnsClientServerAddress -InterfaceIndex $_.ifIndex -ServerAddresses ('1.1.1.1','1.0.0.1') }"
+exit /b
+:undo_dnscf
+powershell -NoProfile -Command "Get-NetAdapter | Where-Object Status -eq 'Up' | ForEach-Object { Set-DnsClientServerAddress -InterfaceIndex $_.ifIndex -ResetServerAddresses }"
+exit /b
+
+:do_dnsgoogle
+powershell -NoProfile -Command "Get-NetAdapter | Where-Object Status -eq 'Up' | ForEach-Object { Set-DnsClientServerAddress -InterfaceIndex $_.ifIndex -ServerAddresses ('8.8.8.8','8.8.4.4') }"
+exit /b
+:undo_dnsgoogle
+goto undo_dnscf
+
+:do_tcptune
+netsh int tcp set global autotuninglevel=normal
+netsh int tcp set global rss=enabled
+exit /b
+:undo_tcptune
+netsh int tcp set global autotuninglevel=normal
+exit /b
+
+:do_throttle
+reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" /v NetworkThrottlingIndex /t REG_DWORD /d 4294967295 /f >nul
+exit /b
+:undo_throttle
+reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" /v NetworkThrottlingIndex /t REG_DWORD /d 10 /f >nul
+exit /b
+
+:do_nagle
+for /f "tokens=*" %%K in ('reg query "HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces"') do (
+    reg add "%%K" /v TcpAckFrequency /t REG_DWORD /d 1 /f >nul 2>&1
+    reg add "%%K" /v TCPNoDelay /t REG_DWORD /d 1 /f >nul 2>&1
+)
+exit /b
+:undo_nagle
+for /f "tokens=*" %%K in ('reg query "HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces"') do (
+    reg delete "%%K" /v TcpAckFrequency /f >nul 2>&1
+    reg delete "%%K" /v TCPNoDelay /f >nul 2>&1
+)
+exit /b
+
+:do_adapterpower
+powershell -NoProfile -Command "Get-NetAdapter -Physical | ForEach-Object { Disable-NetAdapterPowerManagement -Name $_.Name -ErrorAction SilentlyContinue }"
+exit /b
+:undo_adapterpower
+powershell -NoProfile -Command "Get-NetAdapter -Physical | ForEach-Object { Enable-NetAdapterPowerManagement -Name $_.Name -ErrorAction SilentlyContinue }"
+exit /b
+
+:do_qos
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\Psched" /v NonBestEffortLimit /t REG_DWORD /d 0 /f >nul
+exit /b
+:undo_qos
+reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\Psched" /v NonBestEffortLimit /f >nul 2>&1
+exit /b
+
+:do_dop2p
+reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\DeliveryOptimization\Config" /v DODownloadMode /t REG_DWORD /d 0 /f >nul
+exit /b
+:undo_dop2p
+reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\DeliveryOptimization\Config" /v DODownloadMode /t REG_DWORD /d 1 /f >nul
+exit /b
+
+:: =====================================================
+::  CPU ACTIONS
+:: =====================================================
+:do_prioritysep
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\PriorityControl" /v Win32PrioritySeparation /t REG_DWORD /d 38 /f >nul
+exit /b
+:undo_prioritysep
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\PriorityControl" /v Win32PrioritySeparation /t REG_DWORD /d 2 /f >nul
+exit /b
+
+:do_parking
+powercfg -setacvalueindex SCHEME_CURRENT SUB_PROCESSOR CPMINCORES 100
+powercfg -setactive SCHEME_CURRENT
+exit /b
+:undo_parking
+powercfg -setacvalueindex SCHEME_CURRENT SUB_PROCESSOR CPMINCORES 10
+powercfg -setactive SCHEME_CURRENT
+exit /b
+
+:do_minproc
+powercfg -setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMIN 100
+powercfg -setactive SCHEME_CURRENT
+exit /b
+:undo_minproc
+powercfg -setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMIN 5
+powercfg -setactive SCHEME_CURRENT
+exit /b
+
+:do_powerthrottle
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling" /v PowerThrottlingOff /t REG_DWORD /d 1 /f >nul
+exit /b
+:undo_powerthrottle
+reg delete "HKLM\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling" /v PowerThrottlingOff /f >nul 2>&1
+exit /b
+
+:do_sysresp
+reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" /v SystemResponsiveness /t REG_DWORD /d 0 /f >nul
+exit /b
+:undo_sysresp
+reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" /v SystemResponsiveness /t REG_DWORD /d 20 /f >nul
+exit /b
+
+:do_cpuinfo
+powershell -NoProfile -Command "Get-CimInstance Win32_Processor | Select-Object Name,NumberOfCores,NumberOfLogicalProcessors,MaxClockSpeed | Format-List"
+exit /b
+:undo_cpuinfo
+echo This is an information option, nothing to undo.
+exit /b
+
+:: =====================================================
+::  GPU ACTIONS
+:: =====================================================
+:do_hags
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers" /v HwSchMode /t REG_DWORD /d 2 /f >nul
+exit /b
+:undo_hags
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers" /v HwSchMode /t REG_DWORD /d 1 /f >nul
+exit /b
+
+:do_mpo
+reg add "HKLM\SOFTWARE\Microsoft\Windows\Dwm" /v OverlayTestMode /t REG_DWORD /d 5 /f >nul
+exit /b
+:undo_mpo
+reg delete "HKLM\SOFTWARE\Microsoft\Windows\Dwm" /v OverlayTestMode /f >nul 2>&1
+exit /b
+
+:do_fso
+reg add "HKCU\System\GameConfigStore" /v GameDVR_FSEBehaviorMode /t REG_DWORD /d 2 /f >nul
+reg add "HKCU\System\GameConfigStore" /v GameDVR_HonorUserFSEBehaviorMode /t REG_DWORD /d 1 /f >nul
+reg add "HKCU\System\GameConfigStore" /v GameDVR_FSEBehavior /t REG_DWORD /d 2 /f >nul
+reg add "HKCU\System\GameConfigStore" /v GameDVR_DXGIHonorFSEWindowsCompatible /t REG_DWORD /d 1 /f >nul
+exit /b
+:undo_fso
+reg add "HKCU\System\GameConfigStore" /v GameDVR_FSEBehaviorMode /t REG_DWORD /d 0 /f >nul
+reg add "HKCU\System\GameConfigStore" /v GameDVR_HonorUserFSEBehaviorMode /t REG_DWORD /d 0 /f >nul
+reg add "HKCU\System\GameConfigStore" /v GameDVR_FSEBehavior /t REG_DWORD /d 0 /f >nul
+reg add "HKCU\System\GameConfigStore" /v GameDVR_DXGIHonorFSEWindowsCompatible /t REG_DWORD /d 0 /f >nul
+exit /b
+
+:do_vrr
+reg add "HKCU\Software\Microsoft\DirectX\UserGpuPreferences" /v DirectXUserGlobalSettings /t REG_SZ /d "VRROptimizeEnable=1;SwapEffectUpgradeEnable=1;" /f >nul
+exit /b
+:undo_vrr
+reg add "HKCU\Software\Microsoft\DirectX\UserGpuPreferences" /v DirectXUserGlobalSettings /t REG_SZ /d "VRROptimizeEnable=0;SwapEffectUpgradeEnable=0;" /f >nul
+exit /b
+
+:do_tdr
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers" /v TdrDelay /t REG_DWORD /d 8 /f >nul
+exit /b
+:undo_tdr
+reg delete "HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers" /v TdrDelay /f >nul 2>&1
+exit /b
+
+:do_shadercache
+del /f /s /q "%LOCALAPPDATA%\D3DSCache\*" >nul 2>&1
+echo DirectX shader cache cleared.
+exit /b
+:undo_shadercache
+echo No undo available for this tweak.
+exit /b
+
+:: =====================================================
+::  MEMORY ACTIONS
+:: =====================================================
+:do_sysmain
+sc stop SysMain >nul 2>&1
+sc config SysMain start= disabled
+exit /b
+:undo_sysmain
+sc config SysMain start= auto
+sc start SysMain >nul 2>&1
+exit /b
+
+:do_pagingexec
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" /v DisablePagingExecutive /t REG_DWORD /d 1 /f >nul
+exit /b
+:undo_pagingexec
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" /v DisablePagingExecutive /t REG_DWORD /d 0 /f >nul
+exit /b
+
+:do_memcomp
+powershell -NoProfile -Command "Disable-MMAgent -MemoryCompression"
+exit /b
+:undo_memcomp
+powershell -NoProfile -Command "Enable-MMAgent -MemoryCompression"
+exit /b
+
+:do_pagecomb
+powershell -NoProfile -Command "Disable-MMAgent -PageCombining"
+exit /b
+:undo_pagecomb
+powershell -NoProfile -Command "Enable-MMAgent -PageCombining"
+exit /b
+
+:do_ntfsmem
+fsutil behavior set memoryusage 2
+exit /b
+:undo_ntfsmem
+fsutil behavior set memoryusage 1
+exit /b
+
+:do_raminfo
+powershell -NoProfile -Command "Get-CimInstance Win32_OperatingSystem | ForEach-Object { 'Total RAM (GB): ' + [math]::Round($_.TotalVisibleMemorySize/1MB,1); 'Free RAM (GB):  ' + [math]::Round($_.FreePhysicalMemory/1MB,1) }"
+exit /b
+:undo_raminfo
+echo This is an information option, nothing to undo.
+exit /b
+
+:: =====================================================
+::  PERFORMANCE ACTIONS
+:: =====================================================
+:do_hiperf
+powercfg /setactive SCHEME_MIN
+exit /b
+:undo_hiperf
+powercfg /setactive SCHEME_BALANCED
+exit /b
+
+:do_ultimate
+for /f "tokens=4" %%G in ('powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61') do powercfg /setactive %%G
+exit /b
+:undo_ultimate
+powercfg /setactive SCHEME_BALANCED
+exit /b
+
+:do_hibernate
+powercfg -h off
+exit /b
+:undo_hibernate
+powercfg -h on
+exit /b
+
+:do_transparency
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v EnableTransparency /t REG_DWORD /d 0 /f >nul
+exit /b
+:undo_transparency
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v EnableTransparency /t REG_DWORD /d 1 /f >nul
+exit /b
+
+:do_animations
+reg add "HKCU\Control Panel\Desktop\WindowMetrics" /v MinAnimate /t REG_SZ /d 0 /f >nul
+exit /b
+:undo_animations
+reg add "HKCU\Control Panel\Desktop\WindowMetrics" /v MinAnimate /t REG_SZ /d 1 /f >nul
+exit /b
+
+:do_menus
+reg add "HKCU\Control Panel\Desktop" /v MenuShowDelay /t REG_SZ /d 50 /f >nul
+exit /b
+:undo_menus
+reg add "HKCU\Control Panel\Desktop" /v MenuShowDelay /t REG_SZ /d 400 /f >nul
+exit /b
+
+:do_startupdelay
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Serialize" /v StartupDelayInMSec /t REG_DWORD /d 0 /f >nul
+exit /b
+:undo_startupdelay
+reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Serialize" /v StartupDelayInMSec /f >nul 2>&1
+exit /b
+
+:do_bgapps
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications" /v GlobalUserDisabled /t REG_DWORD /d 1 /f >nul
+exit /b
+:undo_bgapps
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications" /v GlobalUserDisabled /t REG_DWORD /d 0 /f >nul
+exit /b
+
+:do_shutdown
+reg add "HKLM\SYSTEM\CurrentControlSet\Control" /v WaitToKillServiceTimeout /t REG_SZ /d 2000 /f >nul
+exit /b
+:undo_shutdown
+reg add "HKLM\SYSTEM\CurrentControlSet\Control" /v WaitToKillServiceTimeout /t REG_SZ /d 5000 /f >nul
+exit /b
+
+:do_trim
+powershell -NoProfile -Command "Get-Volume | Where-Object { $_.DriveLetter -and $_.DriveType -eq 'Fixed' } | ForEach-Object { Optimize-Volume -DriveLetter $_.DriveLetter -ReTrim -ErrorAction SilentlyContinue }"
+exit /b
+:undo_trim
+echo No undo available for this tweak.
+exit /b
+
+:do_lastaccess
+fsutil behavior set disablelastaccess 1
+exit /b
+:undo_lastaccess
+fsutil behavior set disablelastaccess 2
+exit /b
+
+:do_appclose
+reg add "HKCU\Control Panel\Desktop" /v AutoEndTasks /t REG_SZ /d 1 /f >nul
+reg add "HKCU\Control Panel\Desktop" /v HungAppTimeout /t REG_SZ /d 2000 /f >nul
+reg add "HKCU\Control Panel\Desktop" /v WaitToKillAppTimeout /t REG_SZ /d 2000 /f >nul
+exit /b
+:undo_appclose
+reg add "HKCU\Control Panel\Desktop" /v AutoEndTasks /t REG_SZ /d 0 /f >nul
+reg add "HKCU\Control Panel\Desktop" /v HungAppTimeout /t REG_SZ /d 5000 /f >nul
+reg add "HKCU\Control Panel\Desktop" /v WaitToKillAppTimeout /t REG_SZ /d 20000 /f >nul
+exit /b
+
+:: =====================================================
+::  RHETT'S PERFORMANCE  (all-in-one custom mode)
+:: =====================================================
+:do_rhett
+echo.
+call :step "Building the Rhett's Performance power plan"
+set "RPLAN="
+for /f "tokens=4" %%G in ('powercfg /list ^| find "Rhett"') do set "RPLAN=%%G"
+if not defined RPLAN for /f "tokens=4" %%G in ('powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61') do set "RPLAN=%%G"
+if not defined RPLAN for /f "tokens=4" %%G in ('powercfg -duplicatescheme 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c') do set "RPLAN=%%G"
+if not defined RPLAN echo   %RD%Could not create the power plan. Skipping it.%RS%
+if defined RPLAN powercfg -changename %RPLAN% "Rhett's Performance" "Custom performance plan by Rhett" >nul 2>&1
+if defined RPLAN powercfg -setacvalueindex %RPLAN% SUB_PROCESSOR CPMINCORES 100 >nul 2>&1
+if defined RPLAN powercfg -setacvalueindex %RPLAN% SUB_PROCESSOR PROCTHROTTLEMIN 100 >nul 2>&1
+if defined RPLAN powercfg -setacvalueindex %RPLAN% SUB_PROCESSOR PROCTHROTTLEMAX 100 >nul 2>&1
+if defined RPLAN powercfg -setacvalueindex %RPLAN% SUB_PROCESSOR PERFBOOSTMODE 2 >nul 2>&1
+if defined RPLAN powercfg -setacvalueindex %RPLAN% SUB_PROCESSOR SYSCOOLPOL 1 >nul 2>&1
+if defined RPLAN powercfg -setacvalueindex %RPLAN% SUB_DISK DISKIDLE 0 >nul 2>&1
+if defined RPLAN powercfg -setacvalueindex %RPLAN% 2a737441-1930-4402-8d77-b2bebba308a3 48e6b7a6-50f5-4782-a5d4-53bb8f07e226 0 >nul 2>&1
+if defined RPLAN powercfg -setacvalueindex %RPLAN% 501a4d13-42af-4429-9fd1-a8218c268e20 ee12f906-d277-404b-b6da-e5fa1a576df5 0 >nul 2>&1
+if defined RPLAN powercfg -setactive %RPLAN% >nul 2>&1
+
+call :step "CPU: priority boost, no power throttling, responsiveness"
+call :do_prioritysep
+call :do_powerthrottle
+call :do_sysresp
+
+call :step "GPU: HAGS, fullscreen, windowed games and VRR, driver timeout"
+call :do_hags
+call :do_fso
+call :do_vrr
+call :do_tdr
+
+call :step "Network: no throttling, low latency, no adapter power saving"
+call :do_throttle
+call :do_nagle
+call :do_adapterpower
+
+call :step "Gaming: Game Mode on, Game DVR off, task priority"
+call :do_gamemode
+call :do_gamedvr
+call :do_gametask
+
+call :step "System: visuals, startup, shutdown and background apps"
+call :do_transparency
+call :do_animations
+call :do_menus
+call :do_startupdelay
+call :do_bgapps
+call :do_shutdown
+call :do_appclose
+
+call :step "Disk: no last access updates, more NTFS memory"
+call :do_lastaccess
+call :do_ntfsmem
+
+call :step "Memory: checking installed RAM"
+set "RAMGB=0"
+for /f %%R in ('powershell -NoProfile -Command "[math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory/1GB)"') do set "RAMGB=%%R"
+echo   %GY%Detected about %RAMGB% GB of RAM%RS%
+if %RAMGB% geq 16 call :do_pagingexec & call :do_memcomp & call :do_pagecomb
+if %RAMGB% lss 16 echo   %GY%Under 16 GB, so RAM tweaks are skipped to keep things stable.%RS%
+
+call :step "Memory: SysMain (only if you have no hard drive)"
+set "HDDCOUNT=1"
+for /f "usebackq" %%H in (`powershell -NoProfile -Command "(Get-PhysicalDisk | Where-Object MediaType -eq 'HDD' | Measure-Object).Count"`) do set "HDDCOUNT=%%H"
+if "%HDDCOUNT%"=="0" call :do_sysmain
+if not "%HDDCOUNT%"=="0" echo   %GY%Hard drive found or not detected, leaving SysMain on.%RS%
+
+call :step "Cleanup: user temp files"
+call :do_usertemp
+
+echo.
+echo   %BD%%GR%Rhett's Performance is ACTIVE.%RS% %GY%Restart your PC for the full effect.%RS%
+exit /b
+
+:undo_rhett
+echo.
+call :step "Switching back to the Balanced power plan"
+powercfg /setactive SCHEME_BALANCED >nul 2>&1
+for /f "tokens=4" %%G in ('powercfg /list ^| find "Rhett"') do powercfg /delete %%G >nul 2>&1
+call :step "Reverting CPU, GPU, network, gaming and system tweaks"
+call :undo_prioritysep
+call :undo_powerthrottle
+call :undo_sysresp
+call :undo_hags
+call :undo_fso
+call :undo_vrr
+call :undo_tdr
+call :undo_throttle
+call :undo_nagle
+call :undo_adapterpower
+call :undo_gamemode
+call :undo_gamedvr
+call :undo_gametask
+call :undo_transparency
+call :undo_animations
+call :undo_menus
+call :undo_startupdelay
+call :undo_bgapps
+call :undo_shutdown
+call :undo_appclose
+call :undo_lastaccess
+call :undo_ntfsmem
+call :step "Reverting memory tweaks"
+call :undo_pagingexec
+call :undo_memcomp
+call :undo_pagecomb
+call :undo_sysmain
+echo.
+echo   %BD%%YL%Rhett's Performance has been reverted.%RS% %GY%Restart your PC to finish.%RS%
+exit /b
+
+:: =====================================================
+::  GAMING ACTIONS
+:: =====================================================
+:do_gamemode
+reg add "HKCU\Software\Microsoft\GameBar" /v AutoGameModeEnabled /t REG_DWORD /d 1 /f >nul
+exit /b
+:undo_gamemode
+reg add "HKCU\Software\Microsoft\GameBar" /v AutoGameModeEnabled /t REG_DWORD /d 0 /f >nul
+exit /b
+
+:do_gamedvr
+reg add "HKCU\System\GameConfigStore" /v GameDVR_Enabled /t REG_DWORD /d 0 /f >nul
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\GameDVR" /v AllowGameDVR /t REG_DWORD /d 0 /f >nul
+exit /b
+:undo_gamedvr
+reg add "HKCU\System\GameConfigStore" /v GameDVR_Enabled /t REG_DWORD /d 1 /f >nul
+reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\GameDVR" /v AllowGameDVR /f >nul 2>&1
+exit /b
+
+:do_mouseaccel
+reg add "HKCU\Control Panel\Mouse" /v MouseSpeed /t REG_SZ /d 0 /f >nul
+reg add "HKCU\Control Panel\Mouse" /v MouseThreshold1 /t REG_SZ /d 0 /f >nul
+reg add "HKCU\Control Panel\Mouse" /v MouseThreshold2 /t REG_SZ /d 0 /f >nul
+exit /b
+:undo_mouseaccel
+reg add "HKCU\Control Panel\Mouse" /v MouseSpeed /t REG_SZ /d 1 /f >nul
+reg add "HKCU\Control Panel\Mouse" /v MouseThreshold1 /t REG_SZ /d 6 /f >nul
+reg add "HKCU\Control Panel\Mouse" /v MouseThreshold2 /t REG_SZ /d 10 /f >nul
+exit /b
+
+:do_gametask
+set "GK=HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games"
+reg add "%GK%" /v "GPU Priority" /t REG_DWORD /d 8 /f >nul
+reg add "%GK%" /v Priority /t REG_DWORD /d 6 /f >nul
+reg add "%GK%" /v "Scheduling Category" /t REG_SZ /d High /f >nul
+reg add "%GK%" /v "SFIO Priority" /t REG_SZ /d High /f >nul
+exit /b
+:undo_gametask
+set "GK=HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games"
+reg add "%GK%" /v "GPU Priority" /t REG_DWORD /d 8 /f >nul
+reg add "%GK%" /v Priority /t REG_DWORD /d 2 /f >nul
+reg add "%GK%" /v "Scheduling Category" /t REG_SZ /d Medium /f >nul
+reg add "%GK%" /v "SFIO Priority" /t REG_SZ /d Normal /f >nul
+exit /b
+
+:: =====================================================
+::  PRIVACY ACTIONS
+:: =====================================================
+:do_adid
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo" /v Enabled /t REG_DWORD /d 0 /f >nul
+exit /b
+:undo_adid
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo" /v Enabled /t REG_DWORD /d 1 /f >nul
+exit /b
+
+:do_telemetry
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection" /v AllowTelemetry /t REG_DWORD /d 0 /f >nul
+exit /b
+:undo_telemetry
+reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection" /v AllowTelemetry /f >nul 2>&1
+exit /b
+
+:do_diagtrack
+sc stop DiagTrack >nul 2>&1
+sc config DiagTrack start= disabled
+exit /b
+:undo_diagtrack
+sc config DiagTrack start= auto
+sc start DiagTrack >nul 2>&1
+exit /b
+
+:do_activity
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\System" /v EnableActivityFeed /t REG_DWORD /d 0 /f >nul
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\System" /v PublishUserActivities /t REG_DWORD /d 0 /f >nul
+exit /b
+:undo_activity
+reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\System" /v EnableActivityFeed /f >nul 2>&1
+reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\System" /v PublishUserActivities /f >nul 2>&1
+exit /b
+
+:do_suggestions
+set "CK=HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager"
+reg add "%CK%" /v SubscribedContent-338388Enabled /t REG_DWORD /d 0 /f >nul
+reg add "%CK%" /v SubscribedContent-338389Enabled /t REG_DWORD /d 0 /f >nul
+reg add "%CK%" /v SystemPaneSuggestionsEnabled /t REG_DWORD /d 0 /f >nul
+reg add "%CK%" /v SoftLandingEnabled /t REG_DWORD /d 0 /f >nul
+exit /b
+:undo_suggestions
+set "CK=HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager"
+reg add "%CK%" /v SubscribedContent-338388Enabled /t REG_DWORD /d 1 /f >nul
+reg add "%CK%" /v SubscribedContent-338389Enabled /t REG_DWORD /d 1 /f >nul
+reg add "%CK%" /v SystemPaneSuggestionsEnabled /t REG_DWORD /d 1 /f >nul
+reg add "%CK%" /v SoftLandingEnabled /t REG_DWORD /d 1 /f >nul
+exit /b
+
+:do_websearch
+reg add "HKCU\Software\Policies\Microsoft\Windows\Explorer" /v DisableSearchBoxSuggestions /t REG_DWORD /d 1 /f >nul
+exit /b
+:undo_websearch
+reg delete "HKCU\Software\Policies\Microsoft\Windows\Explorer" /v DisableSearchBoxSuggestions /f >nul 2>&1
+exit /b
+
+:: =====================================================
+::  CLEANUP ACTIONS
+:: =====================================================
+:do_usertemp
+del /f /s /q "%TEMP%\*" >nul 2>&1
+for /d %%D in ("%TEMP%\*") do rd /s /q "%%D" >nul 2>&1
+echo User temp folder cleaned.
+exit /b
+:undo_usertemp
+echo No undo available for this tweak.
+exit /b
+
+:do_wintemp
+del /f /s /q "%SystemRoot%\Temp\*" >nul 2>&1
+for /d %%D in ("%SystemRoot%\Temp\*") do rd /s /q "%%D" >nul 2>&1
+echo Windows temp folder cleaned.
+exit /b
+:undo_wintemp
+echo No undo available for this tweak.
+exit /b
+
+:do_recycle
+powershell -NoProfile -Command "Clear-RecycleBin -Force -ErrorAction SilentlyContinue"
+echo Recycle Bin emptied.
+exit /b
+:undo_recycle
+echo No undo available for this tweak.
+exit /b
+
+:do_wucache
+net stop wuauserv >nul 2>&1
+net stop bits >nul 2>&1
+del /f /s /q "%SystemRoot%\SoftwareDistribution\Download\*" >nul 2>&1
+for /d %%D in ("%SystemRoot%\SoftwareDistribution\Download\*") do rd /s /q "%%D" >nul 2>&1
+net start wuauserv >nul 2>&1
+net start bits >nul 2>&1
+echo Update cache cleared.
+exit /b
+:undo_wucache
+echo No undo available for this tweak.
+exit /b
+
+:do_thumbs
+del /f /q "%LOCALAPPDATA%\Microsoft\Windows\Explorer\thumbcache_*.db" >nul 2>&1
+echo Thumbnail cache cleared.
+exit /b
+:undo_thumbs
+echo No undo available for this tweak.
+exit /b
+
+:do_sfc
+start "SFC" cmd /k sfc /scannow
+exit /b
+:undo_sfc
+echo No undo available for this tweak.
+exit /b
+
+:do_dism
+start "DISM" cmd /k DISM /Online /Cleanup-Image /RestoreHealth
+exit /b
+:undo_dism
+echo No undo available for this tweak.
+exit /b
+
+:: =====================================================
+::  RESTORE POINT
+:: =====================================================
+:do_restorepoint
+powershell -NoProfile -Command "try { Enable-ComputerRestore -Drive ($env:SystemDrive + '\'); Checkpoint-Computer -Description 'PC Tweak Menu' -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop; Write-Host 'Restore point created.' } catch { Write-Host ('Could not create restore point: ' + $_.Exception.Message) }"
+exit /b
+:undo_restorepoint
+echo To roll back, open System Restore from the Start menu.
+exit /b
+
+# Rhett's PC Tweaks & Optimization
+
+A colorful, keyboard-driven menu for tuning Windows. Pick a category, pick a tweak, press **Y** to apply it, **U** to undo it, or **N** to cancel. It is a single `.bat` file, so there is nothing to install.
+
+> **Use at your own risk.** These tweaks change Windows settings. Create a restore point first (option **R** on the main menu). Every tweak can be previewed before you confirm it, and almost all of them can be undone from the same menu.
+
+---
+
+## Download
+
+**Recommended:** go to the [**Releases page**](../../releases/latest) and download `Rhetts-PC-Tweaks.bat`.
+
+**Or:** click the green **Code** button at the top of this page, choose **Download ZIP**, then extract it.
+
+---
+
+## Install and run (step by step)
+
+No installer is needed. You just download the file and run it.
+
+1. **Download** `Rhetts-PC-Tweaks.bat` using one of the options above.
+2. **Extract it** if you downloaded the ZIP: right-click the ZIP, choose **Extract All**, then open the folder.
+3. **Double-click** `Rhetts-PC-Tweaks.bat`.
+4. **If Windows shows a blue "Windows protected your PC" screen:** click **More info**, then **Run anyway**. This appears for any unsigned script you download. You can read the whole file in Notepad first (right-click, **Edit**) if you want to see exactly what it does.
+5. **Click Yes** on the "Do you want to allow this app to make changes" prompt. The tweaks need administrator rights.
+6. **Press R** to create a System Restore Point before changing anything.
+7. **Press a number key** (1 to 8) to open a category, then **press a letter key** to choose a tweak.
+8. **Press Y** to apply it, **U** to undo it, or **N** to cancel.
+9. **Restart your PC** after you are done. Some tweaks only take effect after a reboot.
+
+### If the file will not run
+
+- Right-click the `.bat` file, choose **Properties**, tick **Unblock** at the bottom, click **OK**, then try again.
+- Right-click the file and choose **Run as administrator**.
+- If your antivirus blocks it, the file is a plain-text script that edits registry values and Windows settings, which some security tools flag by default. Read the file yourself and allow it only if you are comfortable.
+
+---
+
+## What is inside
+
+| Key | Category | What it does |
+|-----|----------|--------------|
+| 1 | **Network** | Flush DNS, renew IP, reset Winsock and TCP/IP, Cloudflare or Google DNS, TCP tuning, remove throttling, disable Nagle, adapter power saving, QoS, Delivery Optimization |
+| 2 | **CPU** | Foreground priority boost, core parking off, minimum processor state, power throttling off, system responsiveness, CPU info |
+| 3 | **GPU** | GPU scheduling (HAGS), Multiplane Overlay, fullscreen optimizations, windowed-game and VRR settings, driver timeout, shader cache clear |
+| 4 | **Memory** | SysMain, keep kernel in RAM, memory compression, page combining, NTFS memory usage, RAM info |
+| 5 | **Performance** | Ultimate Performance plan, **Rhett's Performance** (all-in-one), High Performance plan, visuals, startup and shutdown speed, TRIM |
+| 6 | **Gaming** | Game Mode, Game DVR, mouse acceleration, game task priority |
+| 7 | **Privacy** | Advertising ID, telemetry, DiagTrack, activity history, Start suggestions, web search |
+| 8 | **Cleanup** | Temp files, Recycle Bin, update cache, thumbnails, SFC, DISM |
+| R | **Restore point** | Creates a System Restore Point |
+
+### Rhett's Performance
+
+Found under **5 Performance**, option **B**. It builds a custom power plan called **Rhett's Performance** and applies a bundle of safe CPU, GPU, network, gaming and system tweaks in one go.
+
+- Keeps all CPU cores awake and the CPU at full speed, and turns off disk, USB and PCIe power saving.
+- Applies the CPU, GPU, network, gaming, startup, shutdown and disk tweaks listed above.
+- Applies the RAM tweaks only if you have about 16 GB of RAM or more.
+- Only disables SysMain if no hard drive is detected.
+- Leaves hibernation and mouse acceleration alone.
+- Press **U** on it to revert everything it changed and delete the custom plan.
+
+The power plan settings apply when plugged in. A laptop on battery keeps its normal limits.
+
+---
+
+## Requirements
+
+- Windows 10 or Windows 11
+- Administrator rights
+- Nothing else. PowerShell, which ships with Windows, is used for a few of the tweaks.
+
+## Undoing changes
+
+- Run the script, open the same tweak, and press **U**.
+- Or use **System Restore** from the Start menu and pick the restore point you created with **R**.
+
+## Troubleshooting
+
+| Problem | Fix |
+|---------|-----|
+| Strange characters like `[96m` on screen | Your console does not support colors. Use Windows Terminal or update Windows 10 to a recent version. |
+| Window opens and closes right away | Right-click the file and choose **Run as administrator**. |
+| A tweak says it needs a reboot | Restart Windows. |
+| Something feels off after a tweak | Open the tweak again and press **U**, or use your restore point. |
+
+## Contributing
+
+Ideas and fixes are welcome. Open an **Issue** or send a **Pull Request**.
+
+## License
+
+See the [LICENSE](LICENSE) file.
